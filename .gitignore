@@ -1,6 +1,6 @@
 fasttext-clojure.iml
-.idea/.name
-.idea/compiler.xml
+.idea/*
+.idea*
 .idea/encodings.xml
 .idea/misc.xml
 .idea/modules.xml
@@ -8,3 +8,9 @@ fasttext-clojure.iml
 .idea/copyright/profiles_settings.xml
 .idea/libraries/Clojure_1_7_0.xml
 lib/clojure-1.7.0.jar
+.idea/libraries/Leiningen__clojure_complete_0_2_4.xml
+.idea/libraries/Leiningen__org_clojure_clojure_1_8_0.xml
+.idea/libraries/Leiningen__org_clojure_tools_nrepl_0_2_12.xml
+doc/intro.md
+target/*
+target*
