@@ -1,0 +1,10 @@
+fasttext-clojure.iml
+.idea/.name
+.idea/compiler.xml
+.idea/encodings.xml
+.idea/misc.xml
+.idea/modules.xml
+.idea/workspace.xml
+.idea/copyright/profiles_settings.xml
+.idea/libraries/Clojure_1_7_0.xml
+lib/clojure-1.7.0.jar
