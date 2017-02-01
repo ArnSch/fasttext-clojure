@@ -1,7 +1,8 @@
 (ns fastext-clojure.core
   (:use [uncomplicate.neanderthal core native]
         [clojure.math.numeric-tower])
-  (:gen-class))
+  (:gen-class)
+  (:require [clojure.java.io :as io]))
 
 (def max-sigmoid 8)
 
@@ -151,7 +152,7 @@
     (let [file (line-seq rdr)]
       (println "Parsing file...")
       (let [string-file          (clojure.string/trim (first file))
-            words                (-> (clojure.string/split string-file #" " 1000001)
+            words                (-> (clojure.string/split string-file #" " 100001)
                                      (drop-last))
             vocabulary           (->> (vals (->vocabulary words))
                                       (filter #(> (:count %) 5))
@@ -179,7 +180,7 @@
                                     learning-rate    (* 0.025 (- 1.0 progress))
                                     ngrams           (:subwords (nth vocabulary token))
                                     context-window   (->context-window token-count total-num-tokens)]
-                                (when (and (= (mod (int (* 100 progress)) 1) 0) (= 1 (rand-int 100)))
+                                (when (and (= (mod (int (* 100 progress)) 1) 0) (= 1 (rand-int 1000)))
                                   (println (str "Progress:  " (int (* 100 progress)) "%")))
                                 (when-not (empty? ngrams)
                                   (mapv (fn [pt-index]
@@ -204,6 +205,7 @@
 
 
 
+        (io/delete-file "output.txt" true)
         (with-open [queries (clojure.java.io/reader "/Users/arnaudschenk/Desktop/fastText-master/data/queries.txt")]
           (doseq [query (line-seq queries)]
             (let [output-vec  (dv dimmension)
@@ -217,4 +219,25 @@
                                                (double (+ x (entry input-matrix ngram index))))))))
               (when-not (empty? ngrams)
                 (scal! (/ 1.0 (count ngrams)) output-vec))
-              (println (str query " " (apply str (map #(str % " ") (into [] output-vec))))))))))))
+
+              (let [output (str query " " (apply str (map #(str % " ") (into [] output-vec))) "\n")]
+                (spit "output.txt" output :append true)
+                (println output)))))
+
+        (io/delete-file "vocab.txt" true)
+        (doseq [query vocabulary]
+          (let [output-vec  (dv dimmension)
+                word-hash   (:word-hash query)
+                vocab-index (get hash->id word-hash nil)
+                ngrams      (if vocab-index (:subwords (nth vocabulary vocab-index)) [])]
+            (doseq [ngram ngrams]
+              (doseq [index (range 100)]
+                (do
+                  (alter! output-vec index (fn ^double [^double x]
+                                             (double (+ x (entry input-matrix ngram index))))))))
+            (when-not (empty? ngrams)
+              (scal! (/ 1.0 (count ngrams)) output-vec))
+
+            (let [output (str (:word query) " " (apply str (map #(str % " ") (into [] output-vec))) "\n")]
+              (spit "vocab.txt" output :append true)
+              (println output))))))))
