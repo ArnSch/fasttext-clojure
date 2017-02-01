@@ -149,8 +149,9 @@
 
   (with-open [rdr (clojure.java.io/reader (first args))]
     (let [file (line-seq rdr)]
+      (println "Parsing file...")
       (let [string-file          (clojure.string/trim (first file))
-            words                (-> (clojure.string/split string-file #" " 100001)
+            words                (-> (clojure.string/split string-file #" " 1000001)
                                      (drop-last))
             vocabulary           (->> (vals (->vocabulary words))
                                       (filter #(> (:count %) 5))
@@ -171,14 +172,15 @@
 
 
 
+        (println "Training net...")
         (doall (map-indexed (fn [token-count token]
-                              (println token-count)
                               (let [total-num-tokens (count filtered-parsed-text)
                                     progress         (/ token-count total-num-tokens)
                                     learning-rate    (* 0.025 (- 1.0 progress))
                                     ngrams           (:subwords (nth vocabulary token))
                                     context-window   (->context-window token-count total-num-tokens)]
-
+                                (when (and (= (mod (int (* 100 progress)) 1) 0) (= 1 (rand-int 100)))
+                                  (println (str "Progress:  " (int (* 100 progress)) "%")))
                                 (when-not (empty? ngrams)
                                   (mapv (fn [pt-index]
                                           (let [hidden-layer (dv dimmension)
@@ -215,7 +217,4 @@
                                                (double (+ x (entry input-matrix ngram index))))))))
               (when-not (empty? ngrams)
                 (scal! (/ 1.0 (count ngrams)) output-vec))
-              (println (str query (into [] output-vec))))))
-
-        (println (count parsed-text))
-        (println (count filtered-parsed-text))))))
+              (println (str query " " (apply str (map #(str % " ") (into [] output-vec))))))))))))
