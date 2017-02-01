@@ -150,7 +150,7 @@
   (with-open [rdr (clojure.java.io/reader (first args))]
     (let [file (line-seq rdr)]
       (let [string-file          (clojure.string/trim (first file))
-            words                (-> (clojure.string/split string-file #" " 100001)
+            words                (-> (clojure.string/split string-file #" " 1000001)
                                      (drop-last))
             vocabulary           (->> (vals (->vocabulary words))
                                       (filter #(> (:count %) 5))
@@ -178,9 +178,6 @@
                                     ngrams           (:subwords (nth vocabulary token))
                                     context-window   (->context-window token-count total-num-tokens)]
 
-                                (println token-count)
-                                (println total-num-tokens)
-
                                 (when-not (empty? ngrams)
                                   (mapv (fn [pt-index]
                                           (let [hidden-layer (dv dimmension)
@@ -201,6 +198,10 @@
                                                             0.0
                                                             (range 0 6))]
                                               (swap! loss-atom + @loss-atom loss)))) context-window)))) filtered-parsed-text))
+
+
+
+        
 
         (println (count parsed-text))
         (println (count filtered-parsed-text))))))
