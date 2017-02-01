@@ -57,7 +57,7 @@
         context-window (->> (range (+ token-count lower-bound) (inc (+ token-count upper-bound)))
                             (remove zero?)
                             (remove neg?)
-                            (remove #(> % total-token-count)))]
+                            (remove #(>= % total-token-count)))]
     context-window))
 
 (defn compute-output-matrix
@@ -86,8 +86,10 @@
 
 (defn init-sigmoid
   [x]
-  (let [y (/ (* x 2 max-sigmoid) (- sigmoid-table-size max-sigmoid))]
-    (/ 1.0 (+ 1.0 (Math/exp (* -1.0 y))))))
+  (let [y (- (/ (* x 2 max-sigmoid) sigmoid-table-size) max-sigmoid)
+        a (Math/exp (* -1.0 y))]
+
+    (/ 1.0 (+ 1.0 a))))
 
 (defn init-log
   [x]
@@ -108,7 +110,7 @@
 
     :else
     (let [sigmoid-index (/ (* (+ x max-sigmoid) sigmoid-table-size) max-sigmoid 2)]
-      (entry sigmoid-table sigmoid-index))))
+      (double (entry sigmoid-table sigmoid-index)))))
 
 (defn get-log
   [x]
@@ -126,7 +128,6 @@
         alpha (* learning-rate (- label score))]
     (compute-gradient output-matrix gradient target alpha)
     (compute-output-matrix output-matrix hidden-layer target alpha)
-    (println score)
     (case label
       1.0
       (* -1.0 (get-log score))
@@ -141,13 +142,15 @@
       (get-negative unigram-table target-token)
       random-token)))
 
+(def loss-atom (atom (double 0)))
+
 (defn -main
   [& args]
 
   (with-open [rdr (clojure.java.io/reader (first args))]
     (let [file (line-seq rdr)]
       (let [string-file          (clojure.string/trim (first file))
-            words                (-> (clojure.string/split string-file #" " 1000001)
+            words                (-> (clojure.string/split string-file #" " 100001)
                                      (drop-last))
             vocabulary           (->> (vals (->vocabulary words))
                                       (filter #(> (:count %) 5))
@@ -175,10 +178,11 @@
                                     ngrams           (:subwords (nth vocabulary token))
                                     context-window   (->context-window token-count total-num-tokens)]
 
+                                (println token-count)
+                                (println total-num-tokens)
+
                                 (when-not (empty? ngrams)
                                   (mapv (fn [pt-index]
-
-
                                           (let [hidden-layer (dv dimmension)
                                                 gradient     (dv dimmension)]
 
@@ -196,7 +200,7 @@
                                                                 (+ loss (compute-loss output-matrix gradient hidden-layer (get-negative unigram-table pt-token) 0.0 learning-rate))))
                                                             0.0
                                                             (range 0 6))]
-                                              (println loss)))) context-window)))) filtered-parsed-text))
+                                              (swap! loss-atom + @loss-atom loss)))) context-window)))) filtered-parsed-text))
 
         (println (count parsed-text))
         (println (count filtered-parsed-text))))))
