@@ -77,12 +77,12 @@
 (defn compute-hidden
   [hidden-layer input-matrix ngrams]
   (doseq [ngram ngrams]
-    (doseq [ngram-index (range 100)]
+    (doseq [index (range 100)]
       (do
-        (alter! hidden-layer ngram-index (fn ^double [^double x]
-                                           (double (*
-                                                    (+ x (entry input-matrix ngram ngram-index))
-                                                    (/ 1.0 (count ngrams))))))))))
+        (alter! hidden-layer index (fn ^double [^double x]
+                                     (double (+ x (entry input-matrix ngram index))))))))
+  (when-not (empty? ngrams)
+    (scal! (/ 1.0 (count ngrams)) hidden-layer)))
 
 (defn init-sigmoid
   [x]
@@ -150,7 +150,7 @@
   (with-open [rdr (clojure.java.io/reader (first args))]
     (let [file (line-seq rdr)]
       (let [string-file          (clojure.string/trim (first file))
-            words                (-> (clojure.string/split string-file #" " 1000001)
+            words                (-> (clojure.string/split string-file #" " 100001)
                                      (drop-last))
             vocabulary           (->> (vals (->vocabulary words))
                                       (filter #(> (:count %) 5))
@@ -172,6 +172,7 @@
 
 
         (doall (map-indexed (fn [token-count token]
+                              (println token-count)
                               (let [total-num-tokens (count filtered-parsed-text)
                                     progress         (/ token-count total-num-tokens)
                                     learning-rate    (* 0.025 (- 1.0 progress))
@@ -201,7 +202,20 @@
 
 
 
-        
+        (with-open [queries (clojure.java.io/reader "/Users/arnaudschenk/Desktop/fastText-master/data/queries.txt")]
+          (doseq [query (line-seq queries)]
+            (let [output-vec  (dv dimmension)
+                  word-hash   (hash [query])
+                  vocab-index (get hash->id word-hash nil)
+                  ngrams      (if vocab-index (:subwords (nth vocabulary vocab-index)) [])]
+              (doseq [ngram ngrams]
+                (doseq [index (range 100)]
+                  (do
+                    (alter! output-vec index (fn ^double [^double x]
+                                               (double (+ x (entry input-matrix ngram index))))))))
+              (when-not (empty? ngrams)
+                (scal! (/ 1.0 (count ngrams)) output-vec))
+              (println (str query (into [] output-vec))))))
 
         (println (count parsed-text))
         (println (count filtered-parsed-text))))))
