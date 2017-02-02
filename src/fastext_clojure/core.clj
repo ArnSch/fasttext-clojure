@@ -152,7 +152,7 @@
     (let [file (line-seq rdr)]
       (println "Parsing file...")
       (let [string-file          (clojure.string/trim (first file))
-            words                (-> (clojure.string/split string-file #" " 100001)
+            words                (-> (clojure.string/split string-file #" " 1000001)
                                      (drop-last))
             vocabulary           (->> (vals (->vocabulary words))
                                       (filter #(> (:count %) 5))
