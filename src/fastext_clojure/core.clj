@@ -2,7 +2,10 @@
   (:use [uncomplicate.neanderthal core native]
         [clojure.math.numeric-tower])
   (:gen-class)
-  (:require [clojure.java.io :as io]))
+  (:require [clojure.java.io :as io]
+            [clojure.core.matrix.linear :as ml]
+            [clojure.core.matrix.operators :as opps]
+            [clojure.core.matrix :as m]))
 
 (def max-sigmoid 8)
 
@@ -147,97 +150,95 @@
 
 (defn -main
   [& args]
-
-  (with-open [rdr (clojure.java.io/reader (first args))]
-    (let [file (line-seq rdr)]
-      (println "Parsing file...")
-      (let [string-file          (clojure.string/trim (first file))
-            words                (-> (clojure.string/split string-file #" " 1000001)
-                                     (drop-last))
-            vocabulary           (->> (vals (->vocabulary words))
-                                      (filter #(> (:count %) 5))
-                                      (sort-by :count >))
-            hash->id             (into {} (map-indexed (fn [idx word] [(:word-hash word) idx]) vocabulary))
-            parsed-text          (remove nil? (map #(get hash->id (hash [%]) nil) words))
-            nwords               (count vocabulary)
-            ntokens              (count words)
-            dimmension           100
-            input-matrix         (dge (+ nwords 2000000) dimmension (repeatedly #(double (/ (- (rand) 0.5) 50))))
-            output-matrix        (dge nwords dimmension)
-            unigram-table        (->unigram-table (map :count vocabulary))
-            discard-table        (map (fn [word]
-                                        (let [frequency          (/ (:count word) ntokens)
-                                              weighted-frequency (/ 0.0001 frequency)]
-                                          (+ (sqrt weighted-frequency) weighted-frequency))) vocabulary)
-            filtered-parsed-text (filter (fn [token] (> (rand) (nth discard-table token))) parsed-text)]
+  (println "Parsing file...")
+  (let [file                 (slurp (first args))
+        string-file          (clojure.string/trim file)
+        words                (-> (clojure.string/split string-file #" " 1000001)
+                                 (drop-last))
+        vocabulary           (->> (vals (->vocabulary words))
+                                  (filter #(> (:count %) 5))
+                                  (sort-by :count >))
+        hash->id             (into {} (map-indexed (fn [idx word] [(:word-hash word) idx]) vocabulary))
+        parsed-text          (remove nil? (map #(get hash->id (hash [%]) nil) words))
+        nwords               (count vocabulary)
+        ntokens              (count words)
+        dimmension           100
+        input-matrix         (dge (+ nwords 2000000) dimmension (repeatedly #(double (/ (- (rand) 0.5) 50))))
+        output-matrix        (dge nwords dimmension)
+        unigram-table        (->unigram-table (map :count vocabulary))
+        discard-table        (map (fn [word]
+                                    (let [frequency          (/ (:count word) ntokens)
+                                          weighted-frequency (/ 0.0001 frequency)]
+                                      (+ (sqrt weighted-frequency) weighted-frequency))) vocabulary)
+        filtered-parsed-text (filter (fn [token] (> (rand) (nth discard-table token))) parsed-text)]
 
 
 
-        (println "Training net...")
-        (doall (map-indexed (fn [token-count token]
-                              (let [total-num-tokens (count filtered-parsed-text)
-                                    progress         (/ token-count total-num-tokens)
-                                    learning-rate    (* 0.025 (- 1.0 progress))
-                                    ngrams           (:subwords (nth vocabulary token))
-                                    context-window   (->context-window token-count total-num-tokens)]
-                                (when (and (= (mod (int (* 100 progress)) 1) 0) (= 1 (rand-int 1000)))
-                                  (println (str "Progress:  " (int (* 100 progress)) "%")))
-                                (when-not (empty? ngrams)
-                                  (mapv (fn [pt-index]
-                                          (let [hidden-layer (dv dimmension)
-                                                gradient     (dv dimmension)]
+    (println "Training net...")
+    (doall (map-indexed (fn [token-count token]
+                          (let [total-num-tokens (count filtered-parsed-text)
+                                progress         (/ token-count total-num-tokens)
+                                learning-rate    (* 0.025 (- 1.0 progress))
+                                ngrams           (:subwords (nth vocabulary token))
+                                context-window   (->context-window token-count total-num-tokens)]
+                            (when (and (= (mod (int (* 100 progress)) 1) 0) (= 1 (rand-int 1000)))
+                              (println (str "Progress:  " (int (* 100 progress)) "%")))
+                            (when-not (empty? ngrams)
+                              (mapv (fn [pt-index]
+                                      (let [hidden-layer (dv dimmension)
+                                            gradient     (dv dimmension)]
 
-                                            ;; Compute hidden
-                                            (compute-hidden hidden-layer input-matrix ngrams)
+                                        ;; Compute hidden
+                                        (compute-hidden hidden-layer input-matrix ngrams)
 
-                                            ;; Compute negative sampling
-                                            (let [pt-token (nth filtered-parsed-text pt-index)
-                                                  loss     (reduce
-                                                            (fn [loss index]
-                                                              (case index
-                                                                0
-                                                                (+ loss (compute-loss output-matrix gradient hidden-layer pt-token 1.0 learning-rate))
+                                        ;; Compute negative sampling
+                                        (let [pt-token (nth filtered-parsed-text pt-index)
+                                              loss     (reduce
+                                                        (fn [loss index]
+                                                          (case index
+                                                            0
+                                                            (+ loss (compute-loss output-matrix gradient hidden-layer pt-token 1.0 learning-rate))
 
-                                                                (+ loss (compute-loss output-matrix gradient hidden-layer (get-negative unigram-table pt-token) 0.0 learning-rate))))
-                                                            0.0
-                                                            (range 0 6))]
-                                              (swap! loss-atom + @loss-atom loss)))) context-window)))) filtered-parsed-text))
+                                                            (+ loss (compute-loss output-matrix gradient hidden-layer (get-negative unigram-table pt-token) 0.0 learning-rate))))
+                                                        0.0
+                                                        (range 0 6))]
+                                          (swap! loss-atom + @loss-atom loss)))) context-window)))) filtered-parsed-text))
 
 
 
-        (io/delete-file "output.txt" true)
-        (with-open [queries (clojure.java.io/reader "/Users/arnaudschenk/Desktop/fastText-master/data/queries.txt")]
-          (doseq [query (line-seq queries)]
-            (let [output-vec  (dv dimmension)
-                  word-hash   (hash [query])
-                  vocab-index (get hash->id word-hash nil)
-                  ngrams      (if vocab-index (:subwords (nth vocabulary vocab-index)) [])]
-              (doseq [ngram ngrams]
-                (doseq [index (range 100)]
-                  (do
-                    (alter! output-vec index (fn ^double [^double x]
-                                               (double (+ x (entry input-matrix ngram index))))))))
-              (when-not (empty? ngrams)
-                (scal! (/ 1.0 (count ngrams)) output-vec))
+    (io/delete-file "output.txt" true)
+    (with-open [queries (clojure.java.io/reader "/Users/arnaudschenk/Desktop/fastText-master/data/queries.txt")]
+      (doseq [query (line-seq queries)]
+        (let [output-vec  (dv dimmension)
+              word-hash   (hash [query])
+              vocab-index (get hash->id word-hash nil)
+              ngrams      (if vocab-index (:subwords (nth vocabulary vocab-index)) [])]
+          (doseq [ngram ngrams]
+            (doseq [index (range 100)]
+              (do
+                (alter! output-vec index (fn ^double [^double x]
+                                           (double (+ x (entry input-matrix ngram index))))))))
+          (when-not (empty? ngrams)
+            (scal! (/ 1.0 (count ngrams)) output-vec))
 
-              (let [output (str query " " (apply str (map #(str % " ") (into [] output-vec))) "\n")]
-                (spit "output.txt" output :append true)
-                (println output)))))
+          (let [output (str query " " (apply str (map #(str % " ") (into [] output-vec))) "\n")]
+            (spit "output.txt" output :append true)
+            (println output)))))
 
-        (io/delete-file "vocab.txt" true)
-        (doseq [query vocabulary]
-          (let [output-vec  (dv dimmension)
-                word-hash   (:word-hash query)
-                vocab-index (get hash->id word-hash nil)
-                ngrams      (if vocab-index (:subwords (nth vocabulary vocab-index)) [])]
-            (doseq [ngram ngrams]
-              (doseq [index (range 100)]
-                (do
-                  (alter! output-vec index (fn ^double [^double x]
-                                             (double (+ x (entry input-matrix ngram index))))))))
-            (when-not (empty? ngrams)
-              (scal! (/ 1.0 (count ngrams)) output-vec))
+    (io/delete-file "vocab.txt" true)
+    (doseq [query vocabulary]
+      (let [output-vec  (dv dimmension)
+            word-hash   (:word-hash query)
+            vocab-index (get hash->id word-hash nil)
+            ngrams      (if vocab-index (:subwords (nth vocabulary vocab-index)) [])]
+        (doseq [ngram ngrams]
+          (doseq [index (range 100)]
+            (do
+              (alter! output-vec index (fn ^double [^double x]
+                                         (double (+ x (entry input-matrix ngram index))))))))
+        (when-not (empty? ngrams)
+          (scal! (/ 1.0 (count ngrams)) output-vec))
 
-            (let [output (str (:word query) " " (apply str (map #(str % " ") (into [] output-vec))) "\n")]
-              (spit "vocab.txt" output :append true)
-              (println output))))))))
+        (let [output (str (:word query) " " (apply str (map #(str % " ") (into [] output-vec))) "\n")]
+          (spit "vocab.txt" output :append true)
+          (println output))))))
